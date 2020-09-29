@@ -13,11 +13,13 @@
 #define temp_sensor A0 
 #define LED_G 12
 #define LED_R 13
+#define set_temperature A1
 
 bool state; //state of pushbutton
 bool machine = 0; //state of machine on/off
 float temperature; //temperature reading from sensoe
 float pwm; //PWM to Motor driver
+float temp_set;
 //Control Parameters
 float temp_d = 160; //desired temperature
 float error = 0; //Error
@@ -55,6 +57,8 @@ void loop()
   if(machine==1){
     digitalWrite(LED_R,LOW);
     digitalWrite(LED_G,HIGH);
+    temp_d = 0.244*analogRead(set_temperature)+50;
+    
     //Finding Loop Frequency
     end = start;
     start = millis();
@@ -64,7 +68,7 @@ void loop()
     temperature = analogRead(temp_sensor);
     temperature = (0.494*temperature)-49.88;
     Serial.print("Temperature:");
-    Serial.println(temperature);
+    Serial.println(temp_d);
 
     //Control Block
     error = temp_d - temperature;
