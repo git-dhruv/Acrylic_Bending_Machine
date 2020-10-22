@@ -2,7 +2,7 @@
  * @author: Dhruv Parikh
  * Date: 25th September 2020
  * Project Title: Acrylic Bending Machine
- * Purpose: Temperature State Feedback and control using PI controller
+ * Purpose: Temperature State Feedback and control using P controller
  * Loop Frequency:
 */
 
@@ -21,34 +21,24 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 //Variable Declarations
 //I/Os
-#define pb 2
 #define heater 3 
-#define LED_G 12
-#define LED_R 13
+#define LED_R 2
+#define LED_G 13
 #define knob A0
-
+  
 //Defining MAX6675 Pins
 #define SCK 6
 #define CS 5
 #define SO 4
 
-bool state; //state of pushbutton
-bool machine = 0; //state of machine on/off
 float temperature; //temperature reading from sensoe
 float pwm; //PWM to Motor driver
 //Control Parameters
 float temp_d = 160; //desired temperature
 float error = 0; //Error
-float error_i = 0; //Integral Error
-float alpha = 0.05;
-
-/*
-Time Values
-*/
-float start,time_prev,dt;
 
 //PID function block
-float PID(float,float,float);
+float PID(float);
 
 //Intro Function
 void intro();
@@ -63,7 +53,6 @@ MAX6675 thermocouple(SCK, CS, SO);
 //Intialisation Loop
 void setup()
 {
-  pinMode(pb, INPUT);
   pinMode(heater,OUTPUT);
   pinMode(LED_G,OUTPUT);
   pinMode(LED_R,OUTPUT);
@@ -72,104 +61,61 @@ void setup()
     Serial.println(F("SSD1306 allocation failed"));
     for(;;);
   }
-
+  digitalWrite(LED_G,LOW);
+  digitalWrite(LED_R,HIGH);
+  
   delay(500);
   temperature = thermocouple.readCelsius();
-  delay(500);
   intro();
+  analogWrite(heater,10);  
 }
 
 void loop()
 {
-  //Serial.println(state);
+  digitalWrite(2,0);
   //Temperature for thermocouple
-  alpha = 0;
   temperature = thermocouple.readCelsius();
-  //temperature = (int) temperature;
+  temperature = (int) temperature;
 
   //getting temperature from potentiometer
-  //temp_d =0.244*analogRead(knob)+50; 
-  //temp_d = (int) temp_d;  
-  temp_d = 0;
-  
-  display_temperature(temp_d,temperature);
-  //Serial.println(temperature);  
-  //capturing state of pb
-  state = digitalRead(pb);
-  //if pb is pressed, inverse machine 
-  if(state==1){
-    while(digitalRead(pb)==1);
-    machine = !machine;
-  }
-  //when machine is high
-  if(machine==1){
-    digitalWrite(LED_R,HIGH);
-    digitalWrite(LED_G,LOW);
-    
+  temp_d =0.078*analogRead(knob)+75; 
+  temp_d = (int) temp_d;  
 
-    
-    //Finding Loop Frequency
-    time_prev = start;
-    start = millis();
-    dt = (start-time_prev)/1;
-    
-    /*Temperature FOR TINKERCAD
-    temperature = analogRead(temp_sensor);
-    temperature = (0.494*temperature)-49.88;
-    Serial.print("Temperature:");
-    Serial.println(temperature);
-    */
-    
-    //Control Block
-    error = temp_d - temperature;
-    error_i+=error*dt;
-    pwm = PID(error,error_i,0);
+  //pwm heater with minimum value 100
+  pwm = 100+PID(temp_d);
 
-    //Writing Output
-    analogWrite(heater,pwm);
+  //Displaying on OLED
+  display_temperature(pwm,temperature);
 
-    //Windup for PWM saturation
-    if(pwm==0||pwm==255){
-      error_i = 0;
-    }
-  }
-  //When pb is pressed again
-  else{
-    digitalWrite(LED_G,HIGH);
-    digitalWrite(LED_R,LOW);
-    analogWrite(heater,0);
-    //Serial.println("Machine off!");
-  }
-  Serial.println("Yo");
+  //Writing Values to driver
+  analogWrite(heater,pwm);
+
+  //Delay of 250 ms for matching thermocouple clock speed
   delay(250);
 }
 
-float PID(float error,float error_i,float error_d){
+float PID(float error){
   /*
   PID Params
-  Input: Error, Integral Error and Derivative Error
+  Input: Error
   Output: 8-bit PID PWM value from 0,255 
   Purpose: Calculates PID from errors, set the gain values
   as requried
 
-  Note: Windup to be done in main loop
   */
 
-  //integral
-  float Ki = 0;
   //proportional
-  float Kp = 0.98;
-  //derivative
-  float Kd = 0;
-  //PID output
-  float pid = Kp*error+Ki*error_i+Kd*error_d;
+  float Kp = 0.7;
 
+  //PID output
+  float pid = Kp*error;
+  
   //Saturation
-  if(pid>=255){
-    pid = 255;
+  if(pid>=88){
+    pid = 88;
   }
   else if(pid<=0){
-    pid = 0;
+    pid = 10;
   }
 
   //Return after saturation signal
@@ -207,17 +153,30 @@ void intro(){
   display.println("Machine");
   display.display();
   delay(2000);
+  
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setTextColor(WHITE);
+  display.setCursor(0,20);
+  display.println("Controller");
+  display.setCursor(0,40);
+  display.println("ON");
+  display.display();
+  delay(1000);
 }
 
 
 void display_temperature(float set, float current){
+  current = (int) current;
+  set = (int) set;
   display.clearDisplay();
   display.setCursor(0, 0);
+  
   // Display static text
   display.println("Set:");
   display.setCursor(0, 20);
- display.println(set);
-display.setCursor(0, 40);
+  display.println(set);
+  display.setCursor(0, 40);
   display.print ("Wire: ");
   display.println(current);
   display.display();
