@@ -1,9 +1,9 @@
  /*
  * @author: Dhruv Parikh
- * Date: 25th September 2020
+ * Date: 25th October 2020
  * Project Title: Acrylic Bending Machine
  * Purpose: Temperature State Feedback and control using P controller
- * Loop Frequency:
+ * Loop Frequency: 4Hz
 */
 
 //Max 6675 Adafruit Library 
@@ -37,6 +37,18 @@ float pwm; //PWM to Motor driver
 //Control Parameters
 float temp_d = 160; //desired temperature
 float error = 0; //Error
+float error_i = 0; //Integral Error
+
+/*
+Time Values
+*/
+float start,time_prev,dt;
+
+
+//display functions
+void max_power(float);
+void controller_off(float);
+void extreme_temp(float);
 
 //PID function block
 float PID(float);
@@ -77,26 +89,50 @@ void setup()
 
 void loop()
 {
+      //Finding Loop Frequency
+    time_prev = start;
+    start = millis();
+    dt = (start-time_prev)/1000;
+
   //Temperature for thermocouple
   temperature = thermocouple.readCelsius();
-  temperature = (int) temperature;
-
+  
   //getting temperature from potentiometer
-  temp_d =0.078*analogRead(knob)+75; 
-  temp_d = (int) temp_d;  
-
-  //pwm heater with minimum value 100
-  /*pwm = 80+PID(1.5*(temp_d-temperature))+0.3*temp_d;
-  if(pwm>188){
-    pwm=188;
-  }*/
-  pwm = 180;
-  if(temp_d<temperature){
-    pwm = 100;
+  if(analogRead(knob)<273)
+  {
+    temp_d = -100;
+    controller_off(temperature);
+    pwm = 0;
   }
-  //Displaying on OLED
-  display_temperature(temp_d,temperature);
+  else if(analogRead(knob)>800){
+    temp_d = -100;
+    max_power(temperature);
+    pwm = 188;
+  }
+  else{
+    temp_d =0.104*analogRead(knob)+76.6; 
+    error = temp_d - temperature;
+    error_i+=error*dt;
 
+    //pwm heater with minimum value 100
+    pwm = 110+PID(error,error_i);
+    
+    if(abs(PID(error,error_i))>100){
+      error_i=0;
+    }
+    if(pwm>188){
+      pwm=188;
+    }
+    if(pwm<110){
+      pwm=110;
+    }
+    //Displaying on OLED
+    display_temperature(temp_d,temperature);
+  }
+  if(temperature>200){
+    pwm = 0;
+    extreme_temp(temperature);  
+  }
   //Writing Values to driver
   analogWrite(heater,pwm);
 
@@ -108,11 +144,12 @@ void loop()
     digitalWrite(LED_G,HIGH);
     digitalWrite(LED_R,LOW);
   }
+  
   //Delay of 250 ms for matching thermocouple clock speed
   delay(250);
 }
 
-float PID(float error){
+float PID(float error,float error_i){
   /*
   PID Params
   Input: Error
@@ -123,21 +160,21 @@ float PID(float error){
   */
 
   //proportional
-  float Kp = 0.865; //0.7;
-
+  float Kp = 3.75; //0.7;
+  float Ki = 0.05;
   if(error<0){
-    Kp = 2;
+    Kp = 0.5;
   }
   //PID output
-  float pid = Kp*error;
+  float pid = Kp*error+Ki*error_i;
  
   //Saturation
-  if(pid>=108){
-    pid = 108;
+  if(pid>=105){
+    pid = 105;
   }
   
-  else if(pid<=-50){
-    pid = -50;
+  else if(pid<=0){
+    pid = 0;
   }
 
   //Return after saturation signal
@@ -150,10 +187,10 @@ void intro(){
   display.setTextColor(WHITE);
   //X,Y
   display.setCursor(0,20);
-  display.println("Robust");
+  display.println("Welcome...");
   display.display();
-  delay(750);
-  
+  delay(1500);
+/*  
   display.clearDisplay();
   display.setCursor(0,20);
   display.println("Asthetic");
@@ -165,7 +202,7 @@ void intro(){
   display.println("Precise");
   display.display();
   delay(750);
-
+*/
   display.clearDisplay();
   display.setCursor(0,0);
   display.println("Acrylic");
@@ -189,17 +226,67 @@ void intro(){
 
 
 void display_temperature(float set, float current){
-  current = (int) current;
-  set = (int) set;
+  int cur = (int) current;
+  int set_temp = (int) set;
   display.clearDisplay();
   display.setCursor(0, 0);
   
   // Display static text
   display.println("Set:");
   display.setCursor(0, 20);
-  display.println(set);
+  display.println(set_temp);
   display.setCursor(0, 40);
-  display.print ("Wire: ");
-  display.println(current);
+  display.print ("Wire:");
+  display.println(cur);
   display.display();
 } 
+
+void controller_off(float temp){
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("HEAT OFF");
+  display.setCursor(0, 20);
+  int disp = (int) temp;
+  display.print("Wire:");
+  display.println(temp);
+  display.display();
+}
+
+void max_power(float temp){
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("MAX POWER");
+  display.setCursor(0, 20);
+  int disp = (int) temp;
+  display.print("Wire:");
+  display.println(temp);
+  display.display();
+}
+
+void extreme_temp(float temp){
+  digitalWrite(LED_G,HIGH);
+  digitalWrite(LED_R,HIGH);
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("OVERHEAT!");
+  display.display();
+  delay(200);
+  digitalWrite(LED_G,HIGH);
+  digitalWrite(LED_R,LOW); 
+  display.clearDisplay();
+  display.display();
+  delay(200);
+  digitalWrite(LED_G,HIGH);
+  digitalWrite(LED_R,HIGH);
+  
+  display.setCursor(0, 0);
+  display.println("OVERHEAT!");
+  display.setCursor(0, 20);
+  int disp = (int) temp;
+  display.print("Wire:");
+  display.println(temp);
+  display.display();
+  delay(500);
+  digitalWrite(LED_G,HIGH);
+  digitalWrite(LED_R,LOW);
+}  
